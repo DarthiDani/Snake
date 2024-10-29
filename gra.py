@@ -1,142 +1,253 @@
 import pygame
-import sys
-import time
 import random
+import sys
 
-# Pygame Init
-init_status = pygame.init()
-if init_status[1] > 0:
-    print("(!) Had {0} initialising errors, exiting... ".format(init_status[1]))
-    sys.exit()
-else:
-    print("(+) Pygame initialised successfully ")
+# Ustawienia
+WIDTH, HEIGHT = 800, 600  # Zwiększona mapa
+GRID_SIZE = 20
+WHITE = (255, 255, 255)
+GREEN = (0, 255, 0)  # Kolor jedzenia
+RED = (255, 0, 0)    # Kolor miny
+BLACK = (0, 0, 0)
+YELLOW = (255, 255, 0)  # Kolor głowy węża
+BLUE = (0, 0, 255)      # Kolor ogona węża
 
-# Play Surface
-size = width, height = 640, 320
-playSurface = pygame.display.set_mode(size)
-pygame.display.set_caption("Snake Game")
+# Klasa Węża
+class Snake:
+    def __init__(self):
+        self.body = [(100, 100)]  # Zmniejszona początkowa długość węża
+        self.direction = (GRID_SIZE, 0)
+        self.grow = False
 
-# Colors
-red = pygame.Color(255, 0, 0)
-green = pygame.Color(0, 255, 0)
-black = pygame.Color(0, 0, 0)
-white = pygame.Color(255, 255, 255)
-brown = pygame.Color(165, 42, 42)
-blue = pygame.Color(0, 0, 255)  # Color for the enemy snake
+    def move(self):
+        head_x, head_y = self.body[0]
+        new_head = (head_x + self.direction[0], head_y + self.direction[1])
+        self.body.insert(0, new_head)
+        if not self.grow:
+            self.body.pop()
+        else:
+            self.grow = False
 
-# FPS controller
-fpsController = pygame.time.Clock()
+    def change_direction(self, direction):
+        self.direction = direction
 
-# Game settings
-delta = 10
-snakePos = [100, 50]
-snakeBody = [[100, 50], [90, 50], [80, 50]]
-foodPos = [400, 50]
-foodSpawn = True
-direction = 'RIGHT'
-changeto = ''
-score = 0
-difficulty = 1  # 1: Easy, 2: Medium, 3: Hard
+    def eat(self):
+        self.grow = True
 
-# Enemy snake settings
-enemyPos = [0, 0]  # Starting at top-left corner
-enemyBody = [[0, 0], [10, 0], [20, 0]]  # Initial size of the enemy snake
-enemyDirection = random.choice(['UP', 'DOWN', 'LEFT', 'RIGHT'])
+    def collides_with_self(self):
+        return self.body[0] in self.body[1:]
 
-# Game Over
-def gameOver():
-    myFont = pygame.font.SysFont('monaco', 72)
-    GOsurf = myFont.render("Game Over", True, red)
-    GOrect = GOsurf.get_rect()
-    GOrect.midtop = (320, 25)
-    playSurface.blit(GOsurf, GOrect)
-    showScore(0)
-    pygame.display.flip()
-    time.sleep(4)
-    mainMenu()
+    def collides_with_bounds(self):
+        head_x, head_y = self.body[0]
+        return head_x < 0 or head_x >= WIDTH or head_y < 0 or head_y >= HEIGHT
 
-# Show Score
-def showScore(choice=1):
-    SFont = pygame.font.SysFont('monaco', 32)
-    Ssurf = SFont.render("Score : {0}".format(score), True, black)
-    Srect = Ssurf.get_rect()
-    if choice == 1:
-        Srect.midtop = (80, 10)
-    else:
-        Srect.midtop = (320, 100)
-    playSurface.blit(Ssurf, Srect)
+    def draw(self, surface):
+        # Rysowanie głowy węża
+        head_x, head_y = self.body[0]
+        pygame.draw.polygon(surface, YELLOW, [
+            (head_x + GRID_SIZE // 2, head_y),  # Wierzchołek góry
+            (head_x, head_y + GRID_SIZE),  # Lewy dolny wierzchołek
+            (head_x + GRID_SIZE, head_y + GRID_SIZE)  # Prawy dolny wierzchołek
+        ])
+        # Rysowanie ogona
+        for segment in self.body[1:]:
+            pygame.draw.rect(surface, BLUE, (*segment, GRID_SIZE, GRID_SIZE))
 
-# Main Menu
-def mainMenu():
+# Klasa Jedzenia
+class Food:
+    def __init__(self):
+        self.spawn()
+
+    def spawn(self):
+        self.position = (random.randint(0, (WIDTH // GRID_SIZE - 1)) * GRID_SIZE,
+                         random.randint(0, (HEIGHT // GRID_SIZE - 1)) * GRID_SIZE)
+
+    def draw(self, surface):
+        pygame.draw.rect(surface, GREEN, (*self.position, GRID_SIZE, GRID_SIZE))
+
+# Klasa Miny
+class Mine:
+    def __init__(self, position=None):
+        self.position = position if position else self.spawn()
+
+    def spawn(self):
+        return (random.randint(0, (WIDTH // GRID_SIZE - 1)) * GRID_SIZE,
+                random.randint(0, (HEIGHT // GRID_SIZE - 1)) * GRID_SIZE)
+
+    def draw(self, surface):
+        # Rysowanie trójkąta
+        pygame.draw.polygon(surface, RED, [
+            (self.position[0] + GRID_SIZE // 2, self.position[1]),  # Wierzchołek góry
+            (self.position[0], self.position[1] + GRID_SIZE),  # Lewy dolny wierzchołek
+            (self.position[0] + GRID_SIZE, self.position[1] + GRID_SIZE)  # Prawy dolny wierzchołek
+        ])
+
+# Funkcja generująca miny
+def generate_mines(snake_body, num_mines=6):
+    mines = []
+    while len(mines) < num_mines:
+        position = (random.randint(0, (WIDTH // GRID_SIZE - 1)) * GRID_SIZE,
+                    random.randint(0, (HEIGHT // GRID_SIZE - 1)) * GRID_SIZE)
+        while position in snake_body or position in [mine.position for mine in mines]:  # Upewnij się, że mina nie pojawi się na wężu ani w miejscu innej miny
+            position = (random.randint(0, (WIDTH // GRID_SIZE - 1)) * GRID_SIZE,
+                        random.randint(0, (HEIGHT // GRID_SIZE - 1)) * GRID_SIZE)
+        mines.append(Mine(position))
+    return mines
+
+# Klasa Komputerowego Węża
+class ComputerSnake(Snake):
+    def __init__(self):
+        super().__init__()
+        self.direction = (GRID_SIZE, 0)  # Domyślny kierunek
+
+    def auto_move(self, food_position):
+        head_x, head_y = self.body[0]
+
+        # Prosta logika sterowania komputerem
+        if head_x < food_position[0]:
+            self.change_direction((GRID_SIZE, 0))
+        elif head_x > food_position[0]:
+            self.change_direction((-GRID_SIZE, 0))
+        elif head_y < food_position[1]:
+            self.change_direction((0, GRID_SIZE))
+        elif head_y > food_position[1]:
+            self.change_direction((0, -GRID_SIZE))
+
+# Funkcja menu
+def menu(screen):
     while True:
-        playSurface.fill(green)
-        myFont = pygame.font.SysFont('monaco', 50)
-        titleSurf = myFont.render("Snake Game", True, black)
-        playSurface.blit(titleSurf, (200, 50))
-
-        menuFont = pygame.font.SysFont('monaco', 30)
-        playSurf = menuFont.render("Press P to Play", True, black)
-        exitSurf = menuFont.render("Press E to Exit", True, black)
-        settingsSurf = menuFont.render("Press S for Settings", True, black)
-
-        playSurface.blit(playSurf, (200, 150))
-        playSurface.blit(exitSurf, (200, 200))
-        playSurface.blit(settingsSurf, (200, 250))
-
-        pygame.display.flip()
-
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_p:
-                    gameLoop()
-                if event.key == pygame.K_e:
-                    pygame.quit()
-                    sys.exit()
-                if event.key == pygame.K_s:
-                    settingsMenu()
 
-# Settings Menu
-def settingsMenu():
-    global difficulty
-    while True:
-        playSurface.fill(white)
-        myFont = pygame.font.SysFont('monaco', 50)
-        settingsSurf = myFont.render("Settings", True, black)
-        playSurface.blit(settingsSurf, (220, 50))
-
-        menuFont = pygame.font.SysFont('monaco', 30)
-        easySurf = menuFont.render("Press 1 for Easy", True, black)
-        mediumSurf = menuFont.render("Press 2 for Medium", True, black)
-        hardSurf = menuFont.render("Press 3 for Hard", True, black)
-        backSurf = menuFont.render("Press B to go Back", True, black)
-
-        playSurface.blit(easySurf, (200, 150))
-        playSurface.blit(mediumSurf, (200, 200))
-        playSurface.blit(hardSurf, (200, 250))
-        playSurface.blit(backSurf, (200, 300))
-
-        pygame.display.flip()
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_1:
-                    difficulty = 1
+                    return "play"  # Zagraj
                 elif event.key == pygame.K_2:
-                    difficulty = 2
+                    return "difficulty"  # Ustaw poziom trudności
                 elif event.key == pygame.K_3:
-                    difficulty = 3
-                elif event.key == pygame.K_b:
-                    mainMenu()
+                    pygame.quit()
+                    sys.exit()  # Wyjdź
 
-# Placeholder for gameLoop function
-def gameLoop():
-    pass  # Implement the main game loop here
+        # Wyświetl menu
+        screen.fill(BLACK)
+        font = pygame.font.Font(None, 36)
+        text = font.render("Snake Game", True, WHITE)
+        screen.blit(text, (WIDTH // 2 - text.get_width() // 2, HEIGHT // 4))
 
-# Start the game
-mainMenu()
+        # Opcje
+        options = ["1. Zagraj (domyślnie poziom łatwy)", "2. Ustaw poziom trudności", "3. Wyjdź"]
+        for i, option in enumerate(options):
+            text = font.render(option, True, WHITE)
+            screen.blit(text, (WIDTH // 2 - text.get_width() // 2, HEIGHT // 4 + 50 + i * 40))
+
+        pygame.display.flip()
+
+# Funkcja ustawiania poziomu trudności
+def set_difficulty(screen):
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_1:
+                    return 5  # Łatwy poziom
+                elif event.key == pygame.K_2:
+                    return 10  # Średni poziom
+                elif event.key == pygame.K_3:
+                    return 15  # Trudny poziom
+                elif event.key == pygame.K_ESCAPE:
+                    return None  # Powrót do menu
+
+        # Wyświetl menu z poziomami trudności
+        screen.fill(BLACK)
+        font = pygame.font.Font(None, 36)
+        text = font.render("Wybierz poziom trudności", True, WHITE)
+        screen.blit(text, (WIDTH // 2 - text.get_width() // 2, HEIGHT // 4))
+
+        options = ["1. Łatwy", "2. Średni", "3. Trudny", "ESC. Powrót do menu"]
+        for i, option in enumerate(options):
+            text = font.render(option, True, WHITE)
+            screen.blit(text, (WIDTH // 2 - text.get_width() // 2, HEIGHT // 4 + 50 + i * 40))
+
+        pygame.display.flip()
+
+# Funkcja końca gry
+def game_over(screen):
+    screen.fill(BLACK)
+    font = pygame.font.Font(None, 74)
+    text = font.render("GAME OVER", True, RED)
+    screen.blit(text, (WIDTH // 2 - text.get_width() // 2, HEIGHT // 2 - text.get_height() // 2))
+    pygame.display.flip()
+    pygame.time.delay(6000)  # Zmiana z 6 na 3 sekundy
+    return
+
+# Funkcja główna
+def main():
+    pygame.init()
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    clock = pygame.time.Clock()
+    snake = Snake()
+    food = Food()
+    mines = generate_mines(snake.body)  # Przeniesiono na górę
+    difficulty_level = 5  # Domyślnie łatwy poziom
+    level_speed = difficulty_level
+
+    while True:
+        choice = menu(screen)
+
+        if choice == "play":
+            while True:
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        pygame.quit()
+                        sys.exit()
+                    if event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_UP and snake.direction != (0, GRID_SIZE):
+                            snake.change_direction((0, -GRID_SIZE))
+                        elif event.key == pygame.K_DOWN and snake.direction != (0, -GRID_SIZE):
+                            snake.change_direction((0, GRID_SIZE))
+                        elif event.key == pygame.K_LEFT and snake.direction != (GRID_SIZE, 0):
+                            snake.change_direction((-GRID_SIZE, 0))
+                        elif event.key == pygame.K_RIGHT and snake.direction != (-GRID_SIZE, 0):
+                            snake.change_direction((GRID_SIZE, 0))
+
+                # Ruch węża
+                snake.move()
+
+                # Sprawdzanie kolizji
+                if snake.collides_with_self() or snake.collides_with_bounds():
+                    game_over(screen)
+                    break  # Wraca do menu po śmierci
+
+                # Sprawdzanie zjedzenia jedzenia
+                if snake.body[0] == food.position:
+                    snake.eat()
+                    food.spawn()
+                    if len(mines) < 6:  # Dodaj nową minę, jeśli jest mniej niż 6
+                        mines.append(Mine())
+
+                # Rysowanie na ekranie
+                screen.fill(BLACK)
+                snake.draw(screen)
+                food.draw(screen)
+                for mine in mines:
+                    mine.draw(screen)
+
+                pygame.display.flip()
+                clock.tick(level_speed)
+
+        elif choice == "difficulty":
+            difficulty_level = set_difficulty(screen)
+            if difficulty_level:
+                level_speed = difficulty_level
+                if difficulty_level == 15:  # Tylko w trybie trudnym
+                    computer_snake = ComputerSnake()  # Dodanie komputera
+                else:
+                    computer_snake = None  # Brak komputera w innych trybach
+
+if __name__ == "__main__":
+    main()
